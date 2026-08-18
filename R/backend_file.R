@@ -8,7 +8,7 @@
 #' @noRd
 secret_get_file <- function(name, file_key = Sys.getenv("SF_SECRET_FILE_KEY")) {
   # ---- start ---- #
-  if (!nzchar(file_key)) {
+  if (!is.character(file_key) || length(file_key) != 1L || is.na(file_key) || !nzchar(file_key)) {
     stop("file backend: no decryption key supplied and SF_SECRET_FILE_KEY is unset",
          call. = FALSE)
   }

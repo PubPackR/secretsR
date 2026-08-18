@@ -12,11 +12,13 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 8.0.0
 Imports: 
     gargle (>= 1.5.0),
+    httr,
     httr2 (>= 1.0.0),
     jsonlite,
-    log4r,
-    safer
+    safer,
+    utils
 Suggests: 
+    log4r,
     testthat (>= 3.0.0),
     withr
 Config/testthat/edition: 3

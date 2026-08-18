@@ -61,3 +61,39 @@ test_that("a production host still permits gsm", {
 test_that("a non-character name is rejected", {
   expect_error(secret_get(42), "character")
 })
+
+test_that("a non-ASCII payload is labelled UTF-8 by the dispatcher", {
+  secret_cache_clear()
+  local_mocked_bindings(secret_get_gsm = function(name, version) "Grüße",
+                        secretsR_is_production = function() FALSE)
+  withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"), {
+    out <- secret_get("studyflix-test")
+    expect_equal(Encoding(out), "UTF-8")
+    expect_equal(out, "Grüße")
+  })
+})
+
+test_that("a non-UTF-8 payload is rejected, whichever backend produced it", {
+  secret_cache_clear()
+  bad <- rawToChar(as.raw(c(0xff, 0xfe, 0x41)))
+  local_mocked_bindings(secret_get_gsm = function(name, version) bad,
+                        secretsR_is_production = function() FALSE)
+  withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"),
+                     expect_error(secret_get("studyflix-test"), "not valid UTF-8"))
+})
+
+test_that("an empty or NA value from any backend is rejected", {
+  secret_cache_clear()
+  local_mocked_bindings(secretsR_is_production = function() FALSE)
+  for (bad in list("", NA_character_, character(0), c("a", "b"))) {
+    local_mocked_bindings(secret_get_gsm = function(name, version) bad)
+    withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"), {
+      secret_cache_clear()
+      expect_error(secret_get("studyflix-test"), "no usable value")
+    })
+  }
+})
+
+test_that("an unsafe secret name is rejected before any network call", {
+  expect_error(secret_get("../../other/secrets/evil"), "not a valid secret name")
+})

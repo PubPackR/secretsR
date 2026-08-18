@@ -14,31 +14,6 @@ test_that("the payload is base64-decoded", {
   expect_equal(secret_get_gsm("studyflix-test"), "hunter2")
 })
 
-test_that("a non-ASCII payload is labelled UTF-8", {
-  local_mocked_bindings(secretsR_token = fake_token,
-                        gsm_perform = function(req) ok_body("Grüße"))
-  out <- secret_get_gsm("studyflix-test")
-  expect_equal(Encoding(out), "UTF-8")
-  expect_equal(out, "Grüße")
-})
-
-test_that("an ASCII payload round-trips unchanged", {
-  # R never flags ASCII, so Encoding() stays "unknown" here. Asserting "UTF-8"
-  # would FAIL for every real API key - the non-ASCII test above pins labelling.
-  local_mocked_bindings(secretsR_token = fake_token,
-                        gsm_perform = function(req) ok_body("plain-ascii-key"))
-  expect_equal(secret_get_gsm("studyflix-test"), "plain-ascii-key")
-})
-
-test_that("a non-UTF-8 payload is rejected rather than mislabelled", {
-  local_mocked_bindings(
-    secretsR_token = fake_token,
-    gsm_perform = function(req) list(payload = list(
-      data = jsonlite::base64_enc(as.raw(c(0xff, 0xfe, 0x41)))))
-  )
-  expect_error(secret_get_gsm("studyflix-test"), "not valid UTF-8")
-})
-
 test_that("the bearer token reaches the request", {
   seen <- NULL
   local_mocked_bindings(

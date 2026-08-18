@@ -30,12 +30,33 @@ test_that("the live registry is pruned to app_default and gce during the call", 
   expect_false("credentials_user_oauth2" %in% seen)
 })
 
-test_that("the registry is restored after the call", {
+test_that("the registry is restored to the DEFAULT chain after the call", {
   secret_cache_clear()
+  # Reset to a known-good starting point. Without this the test reads whatever
+  # an earlier block left behind - and if the implementation used a global
+  # cred_funs_set(), that is already the pruned list, so the assertion would
+  # compare pruned to pruned and pass while the registry leaked permanently.
+  gargle::cred_funs_set(gargle::cred_funs_list_default())
   before <- names(gargle::cred_funs_list())
+
   local_mocked_bindings(gargle_token_fetch = function(scopes, ...) fake_token())
   secretsR_token()
+
   expect_equal(names(gargle::cred_funs_list()), before)
+  # Asserted positively: a leaked prune would remove exactly this one.
+  expect_true("credentials_user_oauth2" %in% names(gargle::cred_funs_list()))
+})
+
+test_that("the registry is restored even when the token fetch errors", {
+  secret_cache_clear()
+  gargle::cred_funs_set(gargle::cred_funs_list_default())
+  before <- names(gargle::cred_funs_list())
+
+  local_mocked_bindings(gargle_token_fetch = function(scopes, ...) stop("boom"))
+  expect_error(secretsR_token(), "boom")
+
+  expect_equal(names(gargle::cred_funs_list()), before)
+  expect_true("credentials_user_oauth2" %in% names(gargle::cred_funs_list()))
 })
 
 test_that("no credentials produces an actionable crash", {
