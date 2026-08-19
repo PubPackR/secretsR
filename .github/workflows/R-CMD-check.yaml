@@ -59,6 +59,9 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     name: coverage (report only)
+    # Report only, as the name says: a coverage-tooling problem must never red a
+    # build whose R CMD check passed on both platforms.
+    continue-on-error: true
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -82,7 +85,11 @@ jobs:
         run: |
           cov <- covr::package_coverage(quiet = FALSE)
           print(cov)
-          zero <- covr::zero_coverage(cov)
+          # tally_coverage(), not zero_coverage(): the latter reaches for
+          # rstudioapi to place editor markers, which is absent on the runner and
+          # killed this job after the numbers had already been computed.
+          tally <- covr::tally_coverage(cov)
+          zero <- unique(tally[tally$value == 0, c("filename", "line")])
           summary <- c(
             "## Test coverage", "",
             sprintf("**%.1f%%** of lines covered.", covr::percent_coverage(cov)), ""

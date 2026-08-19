@@ -88,22 +88,25 @@ Known-good mutations, with expected results:
 
 Two independent reviews found more than has been fixed.
 
-**Test-coverage gaps** (the code exists; nothing would catch a regression):
+**Test-coverage gaps** — four of five closed in `f20bdd7`; one remains:
 
-- No test for the `httr2_http_401` handler. Use the existing `http_err()` helper
-  in `test-backend_gsm-access.R`; assert the message *and* that
-  `secret_cache_get(".token")` is `NULL` afterwards.
-- `req_timeout()` and `req_retry()` are unasserted. Capture `req` in the
-  `gsm_perform` mock and check `req$policies$retry_max_tries` and
-  `req$options$timeout_ms`.
-- The §5.2-mandated WARN on non-`gsm` backends is unasserted — deleting it leaves
-  the suite green.
-- `secret_get_file()`'s default `file_key = Sys.getenv("SF_SECRET_FILE_KEY")` is
-  never exercised; every test passes the key positionally.
-- Three empty-string tests are **vacuous on Windows**: `withr::with_envvar(c(X =
-  ""))` *unsets* the variable here, so they take the `is.na` path and never reach
-  the `nzchar()` guard they were written for. The behaviour is real on the Linux
-  server. Either test the logic directly or `skip_on_os("windows")` with a note.
+- ~~No test for the `httr2_http_401` handler.~~ Closed: asserts the message and
+  that `.token` **and** `.token_minted_at` are `NULL` afterwards.
+- ~~`req_timeout()` and `req_retry()` are unasserted.~~ Closed: the request is
+  captured and `retry_max_tries`, `retry_on_failure`, `retry_is_transient` and
+  `timeout_ms` are all asserted. Note this pins *configuration*, not behaviour —
+  httr2's mock seam short-circuits `req_perform()` before the retry loop, so
+  retrying cannot be observed by performing. Verified on httr2 1.2.3 and 1.3.0.
+- ~~The §5.2-mandated WARN is unasserted.~~ Closed, including the once-per-process
+  throttle. It is captured from **stdout**: log4r's default console appender
+  writes there. Without log4r installed, `secretsR_warn()` degrades to
+  `warning()`, which goes to stderr — the two paths do not agree on a stream.
+- ~~`secret_get_file()`'s default `file_key` is never exercised.~~ Closed.
+- **STILL OPEN** — three empty-string tests are **vacuous on Windows**:
+  `withr::with_envvar(c(X = ""))` *unsets* the variable here, so they take the
+  `is.na` path and never reach the `nzchar()` guard they were written for. The
+  behaviour is real on the Linux server. Either test the logic directly or
+  `skip_on_os("windows")` with a note.
 
 **Design items deferred:**
 
@@ -119,10 +122,42 @@ Two independent reviews found more than has been fixed.
   `options(error = dump.frames)` in a FlowForce job would serialise it into
   `last.dump.rda`. Worth a README note.
 
+## Verified on the server 2026-08-19 — do not re-derive
+
+Measured directly on `shiny.studyflix.info`. These were open questions; three are
+now closed.
+
+- **Dependencies are installed on the host** despite appearing in no install
+  list: gargle 1.6.1, httr2 **1.3.0**, jsonlite 2.0.0, safer 0.2.2, log4r 0.5.0,
+  withr 3.0.3, testthat 3.3.2, remotes 2.4.2.1. Note httr2 is *newer* than the
+  1.2.3 used for development; its `req$policies` names are unchanged, so the
+  retry-policy assertions hold on both.
+- **HTTPS egress to `secretmanager.googleapis.com` works from the host** (GET →
+  401, i.e. reached Google unauthenticated) **and from inside the `application`
+  container** on the `protected` network. The container has **no `curl`**; use
+  `docker exec application Rscript -e '...'` instead. Beware: base R's
+  `curlGetHeaders()` issues a **HEAD**, and Google answers HEAD on that path with
+  **404** — reproduced identically off-server, so a 404 there means nothing.
+  A GET is the only meaningful probe; 401 is the pass.
+- **The server has no GCP credentials at all** — `GOOGLE_APPLICATION_CREDENTIALS`
+  is unset and there is no gcloud ADC file. So `secretsR_is_production()` is
+  currently FALSE there, `SF_GSM_PROJECT` is honoured, and the production guard
+  is inert on the server until a key or the marker lands.
+- **`studyflix-secrets` contains exactly one secret**, `secretsr-integration-test`
+  (v1 enabled = `round-trip-ok`, v2 disabled), created 2026-08-19 to make the
+  integration tests runnable. Nothing real has been migrated into GSM yet.
+- **The live GSM path works end to end from a dev machine** under a *user* ADC:
+  111 tests pass with `SECRETSR_INTEGRATION=1`, including the disabled-`latest`
+  case. The service-account path remains unrun.
+- **Still unverified inside the container:** whether gargle/httr2 exist in the
+  *container's* library. The versions above are the host's. Check with
+  `docker exec application Rscript -e 'packageVersion("httr2")'`.
+
 **Belongs to Plan C3, not here:**
 
 - `gargle` and `httr2` appear in **no** server install list — zero hits in
-  `ansible/install-r-packages.yml` and `shiny-server/Dockerfile`.
+  `ansible/install-r-packages.yml` and `shiny-server/Dockerfile` — though both
+  are in fact installed on the host (see above). The container is unconfirmed.
 - `/etc/studyflix/production` must exist on production hosts. The Shiny container
   mounts neither it nor an `environment:` block, which is why the production
   signal also accepts a readable `GOOGLE_APPLICATION_CREDENTIALS`.
