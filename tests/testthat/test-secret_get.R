@@ -97,3 +97,71 @@ test_that("an empty or NA value from any backend is rejected", {
 test_that("an unsafe secret name is rejected before any network call", {
   expect_error(secret_get("../../other/secrets/evil"), "not a valid secret name")
 })
+
+# ---- the file: namespace must stay reachable on the default backend ----
+
+test_that("a file-backend-internal name resolves through secret_get()", {
+  # The legacy map defines two of these. Validating names against
+  # ^[A-Za-z0-9_-]+$ made the postgres credential unreachable on the DEFAULT
+  # backend - secret_get() rejected the colon its own map depends on.
+  secret_cache_clear()
+  local_mocked_bindings(secret_get_file = function(name, file_key) "pg-value",
+                        secretsR_is_production = function() FALSE)
+  withr::with_envvar(c(SF_SECRET_BACKEND = "file"),
+                     expect_equal(secret_get("file:postgresql-credentials", file_key = "pw"),
+                                  "pg-value"))
+})
+
+test_that("a genuinely malformed name is still refused", {
+  expect_error(secret_get("studyflix/../other"), "not a valid secret name")
+  expect_error(secret_get("file:bad/name"), "not a valid secret name")
+})
+
+# ---- versions exist only in Secret Manager ----
+
+test_that("a pinned version is refused on a backend that has none", {
+  secret_cache_clear()
+  local_mocked_bindings(secret_get_env = function(name) "from-env",
+                        secret_get_file = function(name, file_key) "from-file",
+                        secretsR_is_production = function() FALSE)
+  withr::with_envvar(c(SF_SECRET_BACKEND = "env"),
+                     expect_error(secret_get("studyflix-test", version = "3"),
+                                  "only Secret Manager has versions"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = "file"),
+                     expect_error(secret_get("studyflix-test", version = "3"),
+                                  "cannot honour version"))
+})
+
+test_that("latest is still accepted on every backend", {
+  secret_cache_clear()
+  local_mocked_bindings(secret_get_env = function(name) "from-env",
+                        secretsR_is_production = function() FALSE)
+  withr::with_envvar(c(SF_SECRET_BACKEND = "env"),
+                     expect_equal(secret_get("studyflix-test", version = "latest"), "from-env"))
+})
+
+# ---- previously outstanding: the spec 5.2 WARN was unasserted ----
+
+test_that("a non-gsm backend warns once per process, not once per call", {
+  secret_cache_clear()
+  local_mocked_bindings(secret_get_env = function(name) "from-env",
+                        secretsR_is_production = function() FALSE)
+  # log4r's default console appender writes to stdout, so the WARN lands in the
+  # output stream, not the message stream. (Without log4r installed,
+  # secretsR_warn() degrades to warning(), which goes to stderr instead - the
+  # two paths do not agree on a stream.)
+  msgs <- withr::with_envvar(c(SF_SECRET_BACKEND = "env"), {
+    capture.output(for (i in 1:5) secret_get(paste0("studyflix-test-", i)), type = "output")
+  })
+  expect_length(grep("non-gsm backend", msgs), 1)
+})
+
+test_that("the gsm backend does not warn at all", {
+  secret_cache_clear()
+  local_mocked_bindings(secret_get_gsm = function(name, version) "ok",
+                        secretsR_is_production = function() FALSE)
+  msgs <- withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"), {
+    capture.output(secret_get("studyflix-test"), type = "output")
+  })
+  expect_length(grep("non-gsm backend", msgs), 0)
+})

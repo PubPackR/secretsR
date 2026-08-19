@@ -1,0 +1,97 @@
+# Runs the test suite and R CMD check on every push and pull request.
+#
+# Nothing here deploys. Installing secretsR onto shiny.studyflix.info stays a
+# deliberate act (see README), in line with the house rule that a merge to main
+# is not a release.
+#
+# The integration tests in tests/testthat/test-integration-gsm.R reach the real
+# studyflix-secrets project and are skipped here: SECRETSR_INTEGRATION is
+# deliberately never set, and CI holds no Google credentials (spec 5.11 / Plan C3).
+
+name: R-CMD-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # ubuntu mirrors the server, windows mirrors the developer laptops -
+          # the file backend reads relative paths, which is where the two differ.
+          - {os: ubuntu-latest,  r: 'release'}
+          - {os: windows-latest, r: 'release'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"warning"'
+          upload-snapshots: true
+
+  coverage:
+    runs-on: ubuntu-latest
+    name: coverage (report only)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::covr
+          needs: coverage
+
+      # Printed to the job summary rather than pushed to an external service:
+      # a coverage number is worth seeing on a PR, but this package's source is
+      # not something to hand to a third-party coverage host.
+      - name: Report coverage
+        run: |
+          cov <- covr::package_coverage(quiet = FALSE)
+          print(cov)
+          zero <- covr::zero_coverage(cov)
+          summary <- c(
+            "## Test coverage", "",
+            sprintf("**%.1f%%** of lines covered.", covr::percent_coverage(cov)), ""
+          )
+          if (nrow(zero) > 0) {
+            summary <- c(summary, "### Uncovered lines", "",
+                         sprintf("- `%s:%s`", zero$filename, zero$line))
+          } else {
+            summary <- c(summary, "Every line is covered.")
+          }
+          writeLines(summary, Sys.getenv("GITHUB_STEP_SUMMARY"))
+        shell: Rscript {0}

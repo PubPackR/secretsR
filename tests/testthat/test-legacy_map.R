@@ -20,3 +20,14 @@ test_that("every mapped path is unique", {
 test_that("keys are either canonical studyflix- names or explicitly file-internal", {
   expect_true(all(grepl("^(studyflix-|file:)", names(secretsR_legacy_map))))
 })
+
+test_that("a GSM-only name says what to use instead of reporting a typo", {
+  msg <- tryCatch(secret_legacy_path("studyflix-postgresql-connection"),
+                  error = conditionMessage)
+  expect_match(msg, "no legacy file")
+  expect_match(msg, "file:postgresql-credentials", fixed = TRUE)
+})
+
+test_that("a genuine typo still reports as an unknown name", {
+  expect_error(secret_legacy_path("studyflix-postgres-connection"), "unknown secret name")
+})

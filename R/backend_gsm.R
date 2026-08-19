@@ -163,12 +163,39 @@ secretsR_access_token <- function(tok) {
 
 #' Seam around the HTTP round trip so tests can mock it
 #'
+#' verbosity is pinned rather than left to httr2's default, which reads
+#' getOption("httr2_verbosity") / HTTR2_VERBOSITY from the process. At level 2 or
+#' 3 httr2 prints the decoded response body - and on this one call the response
+#' body IS the credential. A stale HTTR2_VERBOSITY in a FlowForce job, or a
+#' developer debugging an unrelated API in the same session, would otherwise
+#' write every resolved secret into a log that is not treated as a secret store.
+#' It stays an argument so deliberate debugging can opt in; nothing reads it from
+#' the environment.
+#'
 #' @param req An httr2 request.
+#' @param verbosity httr2 verbosity level. Pinned to 0 - see above.
 #' @return The parsed JSON body.
 #' @noRd
-gsm_perform <- function(req) {
+gsm_perform <- function(req, verbosity = 0) {
   # ---- start ---- #
-  httr2::resp_body_json(httr2::req_perform(req))
+  httr2::resp_body_json(httr2::req_perform(req, verbosity = verbosity))
+}
+
+#' The HTTP status of an httr2 error, from its class rather than its response
+#'
+#' Read off the condition class instead of resp_status(e$resp): the response is
+#' absent from a condition raised by anything other than a completed round trip,
+#' and a handler that errors while reporting an error loses the diagnosis it
+#' existed to give.
+#'
+#' @param e An httr2_http condition.
+#' @return The status as a character scalar, or "unknown".
+#' @noRd
+secretsR_http_status <- function(e) {
+  # ---- start ---- #
+  hit <- grep("^httr2_http_[0-9]+$", class(e), value = TRUE)
+  if (length(hit) == 0L) return("unknown")
+  sub("^httr2_http_", "", hit[1])
 }
 
 #' Read a secret from Google Secret Manager
@@ -183,6 +210,13 @@ gsm_perform <- function(req) {
 #' @noRd
 secret_get_gsm <- function(name, version = "latest") {
   # ---- start ---- #
+  # A "file:" name is the other backend's namespace, not a typo. URLencode()
+  # would turn it into %3A and produce a 404 that reads as "the secret is
+  # missing" during a rollback, when the truth is that it never existed here.
+  if (grepl("^file:", name)) {
+    stop(sprintf("GSM: '%s' is a file-backend-internal name and does not exist in Secret Manager (spec 5.8)",
+                 name), call. = FALSE)
+  }
   project <- secretsR_project()
   url <- sprintf(
     "https://secretmanager.googleapis.com/v1/projects/%s/secrets/%s/versions/%s:access",
@@ -194,10 +228,23 @@ secret_get_gsm <- function(name, version = "latest") {
   req <- httr2::req_auth_bearer_token(req, secretsR_access_token(secretsR_token()))
   # Bounded so a stalled TLS connection crashes rather than hangs.
   req <- httr2::req_timeout(req, seconds = 10)
-  # httr2's default is_transient covers 429/503, which is exactly spec 5.10.
-  # max_seconds bounds the whole retry budget: R is single-threaded, so an
-  # unbounded retry inside a Shiny app stalls every session, not just this one.
-  req <- httr2::req_retry(req, max_tries = 3, max_seconds = 20)
+  # httr2's default is_transient is 429/503 ONLY, and retry_on_failure defaults
+  # to FALSE - so out of the box neither a 500 nor the req_timeout() above is
+  # ever retried, and the ten-second bound that exists to stop a hang turns every
+  # stalled connection into an immediate hard failure instead of a retried blip.
+  # Retrying is safe here specifically because versions/{v}:access is an
+  # idempotent GET; do not copy this policy to a mutating call. max_seconds
+  # bounds the whole retry budget: R is single-threaded, so an unbounded retry
+  # inside a Shiny app stalls every session, not just this one.
+  req <- httr2::req_retry(
+    req,
+    max_tries = 3,
+    max_seconds = 40,
+    retry_on_failure = TRUE,
+    is_transient = function(resp) {
+      httr2::resp_status(resp) %in% c(408, 429, 500, 502, 503, 504)
+    }
+  )
 
   body <- tryCatch(
     gsm_perform(req),
@@ -215,7 +262,20 @@ secret_get_gsm <- function(name, version = "latest") {
       name, version, project), call. = FALSE),
     httr2_http_400 = function(e) stop(sprintf(
       "GSM: bad request for '%s' version %s. If the newest version is disabled, 'latest' fails - pin an explicit version.",
-      name, version), call. = FALSE)
+      name, version), call. = FALSE),
+    # Listed last so the specific handlers above win - tryCatch takes the first
+    # matching handler in argument order, and these are keyed on the parent
+    # classes. A terminal `error =` handler would instead re-wrap the four
+    # messages above; keying on the httr2 classes cannot, because the message
+    # they raise is a plain simpleError. Without these, an exhausted 500 or a
+    # dropped connection surfaces as "HTTP 500 Internal Server Error." naming
+    # neither the secret nor the project - useless in a job resolving eight.
+    httr2_http = function(e) stop(sprintf(
+      "GSM: request for '%s' version %s failed after retries with HTTP %s in project '%s'. Check the Secret Manager service status.",
+      name, version, secretsR_http_status(e), project), call. = FALSE),
+    httr2_failure = function(e) stop(sprintf(
+      "GSM: could not reach Secret Manager for '%s' after retries (%s). Check network and DNS from this host.",
+      name, conditionMessage(e)), call. = FALSE)
   )
 
   data <- body$payload$data
@@ -223,5 +283,17 @@ secret_get_gsm <- function(name, version = "latest") {
     stop(sprintf("GSM: unexpected response shape for '%s' version %s (no payload.data)",
                  name, version), call. = FALSE)
   }
-  rawToChar(jsonlite::base64_dec(data))
+  raw_payload <- jsonlite::base64_dec(data)
+  # rawToChar() must not see a NUL: its built-in error embeds the decoded bytes
+  # verbatim and untruncated, putting the credential itself into an unattended
+  # job's log. That is the one path in this package that would leak a plaintext,
+  # and it fires before secretsR_validate() ever runs. A trailing NUL is rejected
+  # too - rawToChar() strips it silently, so the value returned would differ from
+  # the value stored, and a NUL in a credential means it was uploaded mis-encoded
+  # (a UTF-16 file from a PowerShell redirect) rather than that it is binary.
+  if (any(raw_payload == as.raw(0))) {
+    stop(sprintf("GSM: secret '%s' version %s contains NUL bytes; binary payloads are out of scope (spec 5.1)",
+                 name, version), call. = FALSE)
+  }
+  rawToChar(raw_payload)
 }

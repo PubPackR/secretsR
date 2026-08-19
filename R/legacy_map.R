@@ -55,7 +55,31 @@ secretsR_legacy_map <- list(
 secret_legacy_path <- function(name) {
   # ---- start ---- #
   if (!name %in% names(secretsR_legacy_map)) {
+    hint <- secretsR_gsm_only[[name]]
+    if (!is.null(hint)) {
+      stop(sprintf("file backend: '%s' has no legacy file - %s", name, hint), call. = FALSE)
+    }
     stop(sprintf("unknown secret name: '%s'", name), call. = FALSE)
   }
   secretsR_legacy_map[[name]]
 }
+
+#' Canonical names that exist in Secret Manager but have no single legacy file
+#'
+#' These do not resolve on the file backend, so flipping SF_SECRET_BACKEND back
+#' is not transparent for them. Naming them turns "unknown secret name" into a
+#' message that says what to use instead - the alternative is an operator
+#' mid-rollback hunting for a typo in a name that is not a typo.
+#'
+#' This maps the gap; it does not close it. Composing the two postgres halves
+#' into the single payload GSM stores would mean inventing that payload's format
+#' here, which belongs in the migration plan (spec 5.8).
+#'
+#' @noRd
+secretsR_gsm_only <- list(
+  "studyflix-postgresql-connection" = paste(
+    "the file backend keeps this split across 'file:postgresql-credentials' and",
+    "'file:postgresql-server' (spec 5.8), which Billomatics composes;",
+    "there is no single legacy file for it"
+  )
+)

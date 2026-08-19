@@ -15,12 +15,26 @@ secret_get <- function(name, version = "latest", file_key = NULL) {
   if (!is.character(name) || length(name) != 1L || is.na(name) || !nzchar(name)) {
     stop("secret_get(): 'name' must be a non-empty character scalar", call. = FALSE)
   }
-  if (!grepl("^[A-Za-z0-9_-]+$", name)) {
+  # The "file:" prefix is the file backend's own namespace (spec 5.8) and the
+  # legacy map defines two names that use it. Rejecting the colon outright made
+  # both unreachable through secret_get() on the DEFAULT backend - the postgres
+  # credential could not be resolved at all. secret_get_gsm() refuses the prefix
+  # separately, so nothing reaches the URL that should not.
+  if (!grepl("^(file:)?[A-Za-z0-9_-]+$", name)) {
     stop(sprintf("secret_get(): '%s' is not a valid secret name (letters, digits, hyphen, underscore only)",
                  name), call. = FALSE)
   }
   backend <- secretsR_backend()
   secretsR_assert_production_backend(backend)
+
+  # Only Secret Manager has versions. The file and env backends used to accept a
+  # pin and ignore it, so an incident-response call that pinned version 3 got
+  # whatever the legacy file held and looked like it had worked - the
+  # silent-wrong-credential class this package exists to prevent.
+  if (backend != "gsm" && !identical(as.character(version), "latest")) {
+    stop(sprintf("secret_get(): backend '%s' cannot honour version '%s' - only Secret Manager has versions. Drop the version argument, or set SF_SECRET_BACKEND=gsm.",
+                 backend, version), call. = FALSE)
+  }
 
   # The project and the file key both change what a name resolves to, so both
   # belong in the cache key - otherwise switching either returns the previous
