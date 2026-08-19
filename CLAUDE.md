@@ -149,9 +149,15 @@ now closed.
 - **The live GSM path works end to end from a dev machine** under a *user* ADC:
   111 tests pass with `SECRETSR_INTEGRATION=1`, including the disabled-`latest`
   case. The service-account path remains unrun.
-- **Still unverified inside the container:** whether gargle/httr2 exist in the
-  *container's* library. The versions above are the host's. Check with
-  `docker exec application Rscript -e 'packageVersion("httr2")'`.
+- **The `application` container has the dependencies too**, at the same versions
+  as the host except log4r: gargle 1.6.1, httr2 1.3.0, jsonlite 2.0.0,
+  safer 0.2.2, log4r **0.4.4** (host has 0.5.0). Since log4r is a Suggests with a
+  `warning()` fallback, the drift is harmless — but do not assume host versions
+  apply inside the container.
+- **The server shell is `dash`, not bash.** `read -s` fails with "Illegal
+  option -s"; use `stty -echo; read VAR; stty echo` to enter a secret without
+  echoing. Do not paste `<placeholder>` angle brackets into it either — `sh`
+  reads them as redirections and dies with "Syntax error: newline unexpected".
 
 **Belongs to Plan C3, not here:**
 
