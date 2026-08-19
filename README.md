@@ -29,11 +29,33 @@ Unset means `file`. There are no `.env` files anywhere in this design.
 |---|---|---|
 | `SF_SECRET_BACKEND` | `file` | Which backend to use |
 | `SF_GSM_PROJECT` | `studyflix-secrets` | Project holding the secrets |
-| `SF_SECRET_FILE_KEY` | — | `file` backend only: the `safer` master password |
+| `SF_SECRET_FILE_KEY` | — | `file` backend only: one `safer` password — see below |
 
 `secret_get()` also takes `file_key` directly, which is how
 `Billomatics::authentication_process(args)` threads the password through during
 the transition.
+
+### There is no single master password
+
+Verified against the real `keys/` tree on the server, 2026-08-19: the legacy
+files are encrypted under **per-service passwords**, not one master password.
+`authentication_process()` hands each service its own, positionally:
+
+```r
+for (service in needed_services) {
+  pos <- match(service, needed_services)
+  keys[[service]] <- auth_functions[[service]](args[pos])   # args[pos], not args
+}
+```
+
+Measured: one password decrypted `keys/PostgreSQL_DB/*` and failed on all twelve
+`studyflix-*` files, which are structurally identical (single-line, base64).
+
+So `SF_SECRET_FILE_KEY` can only serve secrets that happen to share one password.
+A job needing several services must pass `file_key` **per call** — which is what
+Billomatics does. This is a legacy artefact and disappears with the `file`
+backend in Plan F; until then, do not treat the environment variable as
+sufficient for a multi-service job.
 
 ## The default backend needs configuration
 

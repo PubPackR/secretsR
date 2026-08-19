@@ -9,10 +9,12 @@
 #' Deliberately absent:
 #'   - studyflix-legacy-data-key: not the contents of any file. It is the
 #'     data-encryption key for base-data/ RDS files and the shinymanager SQLite
-#'     stores (spec 3.3, 5.6). Today it is the same string as the keys/ master
-#'     password that decrypts billomat.txt; the two roles are named separately so
-#'     Plan G can re-key the data and let them diverge. Under this backend it IS
-#'     the file_key parameter.
+#'     stores (spec 3.3, 5.6). Under this backend it IS the file_key parameter.
+#'     NOTE: there is no single "keys/ master password". Verified on the server
+#'     2026-08-19 - authentication_process() passes each service its own password
+#'     positionally (`args[pos]`), and one password that decrypts
+#'     keys/PostgreSQL_DB/* fails on all twelve studyflix-* files, which are
+#'     structurally identical. So file_key is per-secret, not global.
 #'   - gemini: requested by zero repositories (IAM matrix). Verify, then drop -
 #'     do not carry a dead credential into GSM.
 #'   - the four service-account-JSON services: they decrypt whole files rather

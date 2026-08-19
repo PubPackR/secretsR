@@ -154,6 +154,27 @@ now closed.
   safer 0.2.2, log4r **0.4.4** (host has 0.5.0). Since log4r is a Suggests with a
   `warning()` fallback, the drift is harmless — but do not assume host versions
   apply inside the container.
+- **There is NO single keys/ master password.** The most important finding of the
+  day, and only visible against production data. `Billomatics::authentication_process()`
+  gives each service its own password positionally — `auth_functions[[service]](args[pos])`,
+  not `args`. Measured from `/home/application-user/base-apps/<app>`: one password
+  decrypted both `keys/PostgreSQL_DB/*` files (40 and 95 chars) and failed on all
+  twelve `studyflix-*` files. Ruled out `readLines()[1]` truncation as the cause —
+  `CRM.txt` (fails) and `postgresql_key.txt` (works) are both single-line and
+  base64, i.e. structurally identical. Consequence: `SF_SECRET_FILE_KEY` serves
+  only secrets sharing one password; a multi-service job must pass `file_key`
+  per call. Corrected in README and `legacy_map.R`, whose roxygen had asserted a
+  single master password.
+- **The `file:` name fix is confirmed against real files.** `file:postgresql-credentials`
+  and `file:postgresql-server` resolve on the server under `f20bdd7`; on `46d4136`
+  they could not be requested at all.
+- **`keys/` lives at `/home/application-user/keys` on the host, `/srv/keys` in the
+  container** (mounted from the same place). Apps: `/home/application-user/base-apps/<app>`
+  and `/srv/shiny-server/<app>`. `../../keys` resolves correctly from an app root
+  in both — and NOT from `/home/application-user`, where it becomes `/keys`.
+  **Open question before cutover: what working directory does FlowForce give
+  `do/main*.R`?** If it is the script's own `do/` directory rather than the app
+  root, every credential on the default backend fails.
 - **The server shell is `dash`, not bash.** `read -s` fails with "Illegal
   option -s"; use `stty -echo; read VAR; stty echo` to enter a secret without
   echoing. Do not paste `<placeholder>` angle brackets into it either — `sh`
