@@ -44,7 +44,7 @@ secretsR_legacy_map <- list(
 #' Resolve a secret name to its legacy file path
 #'
 #' Errors on an unknown name rather than returning NA. authentication_process()
-#' currently falls through to keys[[service]] <- NA for unrecognised names, which
+#' currently falls through to `keys[[service]] <- NA` for unrecognised names, which
 #' silently disables authentication - via a typo, or via version skew between the
 #' installed Billomatics and the code being called (spec 3.5). This is the
 #' regression guard for that defect class.
