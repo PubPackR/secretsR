@@ -175,6 +175,23 @@ now closed.
   **Open question before cutover: what working directory does FlowForce give
   `do/main*.R`?** If it is the script's own `do/` directory rather than the app
   root, every credential on the default backend fails.
+- **All 19 `secretsR_legacy_map` paths exist** on the real tree, checked with
+  `file.exists()` from an app root — no password needed, and the check that
+  actually validates the map:
+  `Rscript -e '.libPaths("~/Rlib"); m <- secretsR:::secretsR_legacy_map; for (n in names(m)) cat(n, m[[n]], file.exists(m[[n]]), "\n")'`
+- **FlowForce's working directory IS the app root** — question closed. Its jobs
+  run as `/bin/sh -c Rscript do/<script>.R ...`, a *relative* path that only
+  resolves from the app root, so `../../keys/` resolves correctly in production.
+  (`readlink /proc/<pid>/cwd` returns empty for these: they run as `flow-fo+`,
+  not `application-user`.)
+- **SECURITY, pre-existing and unrelated to this package: FlowForce passes
+  service passwords as command-line arguments.** `authentication_process()` reads
+  them from `commandArgs()`, so they appear in the job's argv and any local user
+  can read every running job's credentials with `ps aux` — `/proc` is
+  world-readable. This is not a defect in one job; it is how every authenticating
+  FlowForce job works today. It is the strongest single argument for Plan C1:
+  `secret_get()` removes the need to pass credentials through argv at all. Raise
+  before cutover; treat any password observed this way as compromised.
 - **The server shell is `dash`, not bash.** `read -s` fails with "Illegal
   option -s"; use `stty -echo; read VAR; stty echo` to enter a secret without
   echoing. Do not paste `<placeholder>` angle brackets into it either — `sh`
