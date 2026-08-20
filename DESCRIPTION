@@ -1,0 +1,25 @@
+Package: secretsR
+Title: Credential Resolution for Studyflix R Applications
+Version: 0.2.0
+Authors@R: 
+    person("Esta", "Kempf", , "esta.kempf@studyflix.de", role = c("aut", "cre"))
+Description: Resolves Studyflix credentials from Google Secret Manager, from
+    legacy safer-encrypted files, or from environment variables, behind a single
+    function. Replaces credential handling previously embedded in Billomatics.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+Imports: 
+    digest,
+    gargle (>= 1.5.0),
+    httr,
+    httr2 (>= 1.0.0),
+    jsonlite,
+    safer,
+    utils
+Suggests: 
+    log4r,
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
