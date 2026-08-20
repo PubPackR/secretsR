@@ -36,11 +36,19 @@ secret_get <- function(name, version = "latest", file_key = NULL) {
                  backend, version), call. = FALSE)
   }
 
-  # The project and the file key both change what a name resolves to, so both
-  # belong in the cache key - otherwise switching either returns the previous
-  # project's or previous key's value.
+  # Everything that changes what a name resolves to belongs in the cache key,
+  # or the cache serves the wrong credential - the exact failure class this
+  # package exists to prevent.
+  #
+  #   project and file_key: switching either would otherwise return the previous
+  #     one's value.
+  #   working directory, file backend ONLY: the legacy map holds RELATIVE paths
+  #     (../../keys/...), so two app roots in one process resolve the same name
+  #     to different files. Excluded for gsm/env, where cwd is irrelevant and
+  #     including it would turn a directory change into a needless API call.
   cache_key <- paste(backend, secretsR_project(), name, version,
-                     if (is.null(file_key)) "" else substr(digest_key(file_key), 1, 8),
+                     if (is.null(file_key)) "" else digest_key(file_key),
+                     if (identical(backend, "file")) getwd() else "",
                      sep = "|")
   cached <- secret_cache_get(cache_key)
   if (!is.null(cached)) return(cached)
@@ -85,16 +93,28 @@ secretsR_validate <- function(value, name, backend) {
   value
 }
 
-#' Stable short digest of a key, for cache separation only
+#' Stable digest of a key, for cache separation only
 #'
 #' Never stored, never logged - only used to distinguish cache entries.
+#'
+#' This was `paste0(utf8ToInt(substr(x, 1, 1)), "-", nchar(x))`, i.e. first
+#' character plus length, which collided for every pair of equal-length keys
+#' starting with the same letter - "password-a" and "password-b" both produced
+#' "112-10". Two colliding keys shared one cache slot, so the second caller
+#' received the first caller's credential with no error. On the Shiny path
+#' `args` carries a per-user key, which makes that a cross-user leak rather
+#' than merely a wrong value.
+#'
+#' A real hash, not a truncation of one: the cost is a few microseconds once per
+#' distinct key per process, and the failure mode of a collision is serving the
+#' wrong credential.
 #'
 #' @param x A character scalar.
 #' @return A hex digest.
 #' @noRd
 digest_key <- function(x) {
   # ---- start ---- #
-  paste0(as.integer(utf8ToInt(substr(x, 1, 1))), "-", nchar(x))
+  digest::digest(x, algo = "sha256", serialize = FALSE)
 }
 
 #' Refuse non-production backends on a production host

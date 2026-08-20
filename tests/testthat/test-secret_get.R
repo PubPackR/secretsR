@@ -165,3 +165,59 @@ test_that("the gsm backend does not warn at all", {
   })
   expect_length(grep("non-gsm backend", msgs), 0)
 })
+
+test_that("two keys with the same length and first letter get separate cache entries", {
+  # digest_key() was paste0(utf8ToInt(substr(x,1,1)), "-", nchar(x)), so every
+  # pair of equal-length keys starting with the same letter collided. On the
+  # Shiny path args carries a PER-USER key, so a collision serves one user's
+  # credential to another - silently, with no error anywhere.
+  secret_cache_clear()
+  withr::local_envvar(c(SF_SECRET_BACKEND = "file"))
+  local_mocked_bindings(
+    secret_get_file = function(name, file_key = Sys.getenv("SF_SECRET_FILE_KEY")) {
+      paste0("value-for-", file_key)
+    }
+  )
+  expect_identical(secret_get("studyflix-crm-api-key", file_key = "password-a"),
+                   "value-for-password-a")
+  expect_identical(secret_get("studyflix-crm-api-key", file_key = "password-b"),
+                   "value-for-password-b")
+})
+
+test_that("the file backend does not serve one app root's secret from another", {
+  # The legacy map holds RELATIVE paths (../../keys/...), resolved against the
+  # working directory. Two app roots in one process therefore resolve the same
+  # name to different files, but the cache key had no cwd component, so whichever
+  # ran first won for the lifetime of the process.
+  secret_cache_clear()
+  withr::local_envvar(c(SF_SECRET_BACKEND = "file"))
+  root_a <- withr::local_tempdir()
+  root_b <- withr::local_tempdir()
+  for (r in c(root_a, root_b)) dir.create(file.path(r, "app", "do"), recursive = TRUE)
+  local_mocked_bindings(
+    secret_get_file = function(name, file_key = Sys.getenv("SF_SECRET_FILE_KEY")) {
+      # Stands in for the real resolution, which is cwd-dependent by construction.
+      normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+    }
+  )
+  a <- withr::with_dir(file.path(root_a, "app", "do"),
+                       secret_get("studyflix-crm-api-key", file_key = "k"))
+  b <- withr::with_dir(file.path(root_b, "app", "do"),
+                       secret_get("studyflix-crm-api-key", file_key = "k"))
+  expect_false(identical(a, b))
+})
+
+test_that("gsm lookups are not invalidated by a change of working directory", {
+  # cwd belongs in the key only for the file backend: including it for gsm would
+  # turn a directory change into a needless API call on every lookup.
+  secret_cache_clear()
+  withr::local_envvar(c(SF_SECRET_BACKEND = "gsm", SF_GSM_PROJECT = "p"))
+  calls <- 0L
+  local_mocked_bindings(
+    secret_get_gsm = function(name, version = "latest") { calls <<- calls + 1L; "v" }
+  )
+  d <- withr::local_tempdir()
+  expect_identical(secret_get("studyflix-crm-api-key"), "v")
+  withr::with_dir(d, expect_identical(secret_get("studyflix-crm-api-key"), "v"))
+  expect_identical(calls, 1L)
+})

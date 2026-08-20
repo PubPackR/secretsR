@@ -33,7 +33,7 @@ $R = "$env:LOCALAPPDATA\Programs\R\R-4.6.1\bin\Rscript.exe"
 & $R -e "options(buildtools.check=function(a) TRUE); devtools::check(args='--no-manual', error_on='warning')"
 ```
 
-Baseline: **117 passing, 2 skipped, check 0/0/0** (v0.2.0, 2026-08-20).
+Baseline: **123 passing, 2 skipped, check 0/0/0** (v0.2.0, 2026-08-20).
 Integration tests run only with `SECRETSR_INTEGRATION=1` and need GCP access to
 `studyflix-secrets`; that run was 111 at v0.1 and has not been re-measured since.
 
@@ -86,6 +86,17 @@ Known-good mutations, with expected results:
   who can set env vars for a job (FlowForce's `:4647` is internet-reachable)
   satisfies the backend guard with `SF_SECRET_BACKEND=gsm` and repoints the
   package at a project they control.
+- **The cache key must contain everything that changes what a name resolves
+  to**: backend, project, name, version, a real hash of `file_key`, and — for
+  the `file` backend only — `getwd()`. Two defects lived here until 2026-08-20.
+  `digest_key()` was first-character-code plus length, so `"password-a"` and
+  `"password-b"` both produced `"112-10"` and shared a slot; on the Shiny path
+  `args` carries a *per-user* key, making that a cross-user credential leak.
+  And the legacy map holds **relative** paths, so without `getwd()` two app
+  roots in one process collapsed to one entry. Both are mutation-tested; each
+  component fails exactly one test when removed. `getwd()` is excluded for
+  `gsm`/`env` deliberately — there it would turn a directory change into an API
+  call, and a third test pins that.
 - **`secret_get()` is the primary export.** Two others: `secret_cache_clear()`,
   so a long-running process can pick up a rotated secret, and `secret_backend()`
   (v0.2.0), so a consumer can branch on the backend without reaching into `:::`
