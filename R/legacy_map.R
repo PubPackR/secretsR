@@ -7,16 +7,19 @@
 #' Plan F.
 #'
 #' Deliberately absent:
-#'   - studyflix-legacy-data-key: not the contents of any file. It is the
-#'     data-encryption key for base-data/ RDS files and the shinymanager SQLite
-#'     stores (spec 3.3, 5.6). Under this backend it IS the file_key parameter.
+#'   - studyflix-legacy-data-key-billomat and -asana: not the contents of any
+#'     file. Each IS the password that a set of base-data/ RDS files and the
+#'     shinymanager SQLite stores are encrypted with (spec 3.3, 5.6). Under this
+#'     backend they are the file_key parameter, not something to look up.
+#'     There are TWO because a sweep of every encrypt_object()/decrypt_object()
+#'     call site (2026-08-20) found ~49 passing `keys$billomat[1]` and 9 passing
+#'     `keys$asana[1]` - base-02-asana_auswertung writes its output under the Asana
+#'     password and base-18 reads it back.
 #'     NOTE: there is no single "keys/ master password". Verified on the server
 #'     2026-08-19 - authentication_process() passes each service its own password
 #'     positionally (`args[pos]`), and one password that decrypts
 #'     keys/PostgreSQL_DB/* fails on all twelve studyflix-* files, which are
 #'     structurally identical. So file_key is per-secret, not global.
-#'   - gemini: requested by zero repositories (IAM matrix). Verify, then drop -
-#'     do not carry a dead credential into GSM.
 #'   - the four service-account-JSON services: they decrypt whole files rather
 #'     than strings, handled inside Billomatics (spec 5.7, Plan C2).
 #'
@@ -30,9 +33,16 @@ secretsR_legacy_map <- list(
   "studyflix-msgraph-scoped-app-secret"  = "../../keys/Microsoft365R/msgraph_scoped_app.txt",
   "studyflix-msgraph-delegated-secret"   = "../../keys/Microsoft365R/msgraph_delegated_secret.txt",
   "studyflix-msgraph-delegated-storekey" = "../../keys/Microsoft365R/msgraph_delegated_storekey.txt",
+  "studyflix-msgraph-sharepoint-config"  = "../../keys/Microsoft365R/msgraph_sharepoint.txt",
   "studyflix-brevo-smtp-key"             = "../../keys/Brevo/smpt-key.txt",
   "studyflix-bonusdb-key"                = "../../keys/BonusDB/bonusDBKey.txt",
   "studyflix-cleverreach-token"          = "../../keys/cleverReach_key.txt",
+  # Requested by zero repositories (IAM matrix), but authentication_process()
+  # still dispatches it, so it has to resolve or the equivalence test in
+  # spec 5.5 fails on it. The key file does exist on the server (78 bytes,
+  # 2026-08-20), so the service is unused rather than broken. Remove the service
+  # in Plan F; do not silently omit the entry here.
+  "studyflix-gemini-api-key"             = "../../keys/gemini_key.txt",
   "studyflix-openrouter-api-key"         = "../../keys/openrouter.txt",
   "studyflix-openai-admin-api-key"       = "../../keys/openai_admin.txt",
   "studyflix-github-token"               = "../../keys/Github/github_token.txt",

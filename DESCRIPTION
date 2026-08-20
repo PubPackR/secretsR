@@ -1,6 +1,6 @@
 Package: secretsR
 Title: Credential Resolution for Studyflix R Applications
-Version: 0.0.0.9000
+Version: 0.2.0
 Authors@R: 
     person("Esta", "Kempf", , "esta.kempf@studyflix.de", role = c("aut", "cre"))
 Description: Resolves Studyflix credentials from Google Secret Manager, from

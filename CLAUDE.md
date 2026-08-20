@@ -33,8 +33,13 @@ $R = "$env:LOCALAPPDATA\Programs\R\R-4.6.1\bin\Rscript.exe"
 & $R -e "options(buildtools.check=function(a) TRUE); devtools::check(args='--no-manual', error_on='warning')"
 ```
 
-Baseline: **66 passing, 2 skipped, check 0/0/0.** Integration tests run only with
-`SECRETSR_INTEGRATION=1` and need GCP access to `studyflix-secrets`.
+Baseline: **117 passing, 2 skipped, check 0/0/0** (v0.2.0, 2026-08-20).
+Integration tests run only with `SECRETSR_INTEGRATION=1` and need GCP access to
+`studyflix-secrets`; that run was 111 at v0.1 and has not been re-measured since.
+
+**Keep this number current.** It was left at 66 through two commits that added 51
+tests, and a review then cited the stale figure to call a correct expectation
+unmeetable. A test count that lies is worse than no test count.
 
 ## The discipline that matters here
 
@@ -81,8 +86,23 @@ Known-good mutations, with expected results:
   who can set env vars for a job (FlowForce's `:4647` is internet-reachable)
   satisfies the backend guard with `SF_SECRET_BACKEND=gsm` and repoints the
   package at a project they control.
-- **`secret_get()` is the primary export**; `secret_cache_clear()` is the only
-  other, so a long-running process can pick up a rotated secret.
+- **`secret_get()` is the primary export.** Two others: `secret_cache_clear()`,
+  so a long-running process can pick up a rotated secret, and `secret_backend()`
+  (v0.2.0), so a consumer can branch on the backend without reaching into `:::`
+  or re-implementing the resolution rules. `secret_backend()` is a *report*, not
+  a permission — `secret_get()` still enforces the production guard, so knowing
+  the backend cannot be used to bypass it. Keep the export list this short.
+- **The legacy map covers all 22 dispatched services.** `msgraph_sharepoint`
+  (Billomatics PR #32) and `gemini` were added in v0.2.0. Deliberate absences are
+  documented in `R/legacy_map.R`'s roxygen and each has a reason; a name missing
+  without one is a bug, because `authentication_process()` dispatches it and the
+  equivalence test in design §5.5 will fail on it.
+- **There are TWO legacy data keys**, `studyflix-legacy-data-key-billomat` and
+  `-asana`. Established 2026-08-20 by sweeping every
+  `encrypt_object()`/`decrypt_object()` call site org-wide: ~49 pass
+  `keys$billomat[1]`, 9 pass `keys$asana[1]`. Under design §3.3 those are
+  different strings, so a single data key would leave `base-02`'s output
+  unreadable. Neither is in the map — each *is* a `file_key`, not a file.
 
 ## Outstanding — not yet done
 

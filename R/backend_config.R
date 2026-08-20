@@ -1,3 +1,28 @@
+#' The credential backend this process will use
+#'
+#' Exported so a consuming package can branch on the backend without either
+#' reaching into `:::` or re-implementing the resolution rules - the two ways a
+#' consumer's idea of the backend drifts out of sync with the dispatcher's.
+#'
+#' `Billomatics` needs it for two decisions. Under `gsm` there is no password to
+#' prompt for interactively, and no per-service `file_key` to thread through;
+#' under `file` there is. And the four service-account JSON services have no
+#' `file` path at all (design 5.7), so they must branch rather than fail.
+#'
+#' This is a *report*, not a permission: `secret_get()` still enforces the
+#' production guard, so a caller learning the backend here cannot use that
+#' knowledge to bypass it.
+#'
+#' @return One of "gsm", "file" or "env", as a character scalar. Errors if
+#'   SF_SECRET_BACKEND holds an unrecognised value.
+#' @export
+#' @examples
+#' secret_backend()
+secret_backend <- function() {
+  # ---- start ---- #
+  secretsR_backend()
+}
+
 #' Resolve the active secret backend
 #'
 #' Reads SF_SECRET_BACKEND. Per-process by design (spec 5.2) - never set this

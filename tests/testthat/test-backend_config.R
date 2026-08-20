@@ -22,3 +22,22 @@ test_that("project defaults, and honours an explicit value", {
 test_that("an empty project variable falls back to the default", {
   withr::with_envvar(c(SF_GSM_PROJECT = ""), expect_equal(secretsR_project(), "studyflix-secrets"))
 })
+
+test_that("secret_backend() reports the resolved backend", {
+  withr::with_envvar(c(SF_SECRET_BACKEND = "file"), expect_identical(secret_backend(), "file"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = "env"), expect_identical(secret_backend(), "env"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"), expect_identical(secret_backend(), "gsm"))
+})
+
+test_that("secret_backend() defaults to file and rejects an unknown value", {
+  # It is the same resolution secret_get() uses, deliberately: a consumer that
+  # branches on the backend must not be able to disagree with the dispatcher
+  # about what the backend is.
+  withr::with_envvar(c(SF_SECRET_BACKEND = NA), expect_identical(secret_backend(), "file"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = "s3"), expect_error(secret_backend(), "SF_SECRET_BACKEND"))
+})
+
+test_that("secret_backend() is exported", {
+  # Consumers reaching secretsR::: is how the resolution rules drift out of sync.
+  expect_true("secret_backend" %in% getNamespaceExports("secretsR"))
+})

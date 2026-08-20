@@ -8,8 +8,27 @@ test_that("an unknown secret name errors loudly", {
   expect_error(secret_legacy_path("studyflix-google-sheets"), "unknown secret name")
 })
 
-test_that("the legacy data key is not resolvable as a file", {
-  expect_error(secret_legacy_path("studyflix-legacy-data-key"), "unknown secret name")
+test_that("neither legacy data key is resolvable as a file", {
+  # There are two, not one: base-02 encrypts its output under the Asana password
+  # while ~49 other sites use the Billomat one, and design 3.3 establishes those
+  # are different strings. Neither is the contents of any keys/ file - each IS
+  # the password such files are encrypted with - so both must stay unmapped.
+  expect_error(secret_legacy_path("studyflix-legacy-data-key-billomat"),
+               "unknown secret name")
+  expect_error(secret_legacy_path("studyflix-legacy-data-key-asana"),
+               "unknown secret name")
+})
+
+test_that("the map covers every service authentication_process dispatches", {
+  # msgraph_sharepoint landed in Billomatics PR #32 on 2026-08-19, after this map
+  # was last verified against the real tree. gemini was excluded as unused, but
+  # authentication_process() still dispatches it, so it has to resolve or the
+  # equivalence test in design 5.5 fails on it. Its key file does exist on the
+  # server (78 bytes, verified 2026-08-20) - unused, not broken.
+  expect_equal(secret_legacy_path("studyflix-msgraph-sharepoint-config"),
+               "../../keys/Microsoft365R/msgraph_sharepoint.txt")
+  expect_equal(secret_legacy_path("studyflix-gemini-api-key"),
+               "../../keys/gemini_key.txt")
 })
 
 test_that("every mapped path is unique", {
