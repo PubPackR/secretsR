@@ -91,8 +91,21 @@ secretsR_is_production <- function() {
 #' studyflix-secrets, so its key's project_id already IS the default. Deferred as
 #' cleanup rather than done as a fix, because the guard was never load-bearing.
 #'
-#' The failure it does leave is loud, not silent: a wrong project produces a 403
-#' whose message names the project it tried.
+#' ONE REASSURANCE IN THE FIRST DRAFT OF THIS NOTE WAS WRONG. It said the
+#' residual failure is loud, because a wrong project produces a 403 naming it.
+#' That holds for the MISCONFIGURATION case -- a project this credential cannot
+#' read does 403. It does NOT hold adversarially: an actor supplying their own
+#' key picks a project they CAN read, and if it holds a same-named secret the
+#' call returns 200 and the caller silently consumes an attacker-supplied
+#' credential. The deferral rests on the argument above, not on this.
+#'
+#' Two smaller precisions, since this note is now the reference. The two
+#' variables are equally WRITABLE but not equally cheap to exploit: redirecting
+#' GOOGLE_APPLICATION_CREDENTIALS also requires placing a valid key the job's uid
+#' can read. And environment control is not always command control -- a write to
+#' ~flow-force-user/.Renviron reaches all 172 R jobs without touching any job
+#' definition. The conclusion survives both, because that same file can set
+#' GOOGLE_APPLICATION_CREDENTIALS.
 #'
 #' Sys.getenv()'s unset= only fires when the variable is genuinely absent, so a
 #' set-but-empty variable is handled explicitly.

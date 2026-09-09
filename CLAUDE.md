@@ -82,10 +82,18 @@ Known-good mutations, with expected results:
   The check is in the plan's Task 7 Step 6 — it greps for payload-bearing
   variables interpolated into `stop`/`warning`/`message`, not for the words
   themselves.
-- **`SF_GSM_PROJECT` is honoured only outside production.** Otherwise an actor
-  who can set environment variables for a job (see the infrastructure repo's
-  server notes for why that is reachable) satisfies the backend guard with
-  `SF_SECRET_BACKEND=gsm` and repoints the package at a project they control.
+- **`SF_GSM_PROJECT` is honoured only outside production.** This is defence
+  against **misconfiguration** — a stray `SF_GSM_PROJECT` in a profile or an
+  inherited environment, and `.Renviron` is the actual cutover mechanism, so
+  that is a live risk rather than a hypothetical one.
+  **It is not defence against an actor who controls a job's environment**, and
+  an earlier version of this line claimed it was. Two reasons it is not: in
+  production the project comes from the file named by
+  `GOOGLE_APPLICATION_CREDENTIALS`, an environment variable of the same
+  writability; and on the FlowForce host a job's environment *is* its command
+  string (`env VAR=… Rscript …`), so that actor already runs arbitrary code.
+  Keep the rule, drop the claim — see `R/backend_config.R` and
+  `PubPackR/secretsR#2`.
 - **The cache key must contain everything that changes what a name resolves
   to**: backend, project, name, version, a real hash of `file_key`, and — for
   the `file` backend only — `getwd()`. Two defects lived here until 2026-08-20.
