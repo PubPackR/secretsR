@@ -65,12 +65,47 @@ secretsR_is_production <- function() {
 
 #' Resolve the Google Cloud project holding the secrets
 #'
-#' SF_GSM_PROJECT is honoured only OUTSIDE production. Spec 5.2's threat is an
-#' actor who can set environment variables for a job; leaving the project pointer
-#' configurable would let that actor satisfy the backend guard with
-#' SF_SECRET_BACKEND=gsm and then repoint the whole package at a project they
-#' control. In production the project comes from the service-account key's own
-#' project_id, falling back to the compiled-in default.
+#' SF_GSM_PROJECT is honoured only OUTSIDE production. In production the project
+#' comes from the service-account key's own project_id, falling back to the
+#' compiled-in default.
+#'
+#' WHAT THIS DOES AND DOES NOT BUY, corrected 2026-09-09. The original note here
+#' claimed this stops an actor who can set environment variables for a job from
+#' repointing the package at a project they control. It does not, and the Python
+#' twin inherited the claim before review caught it.
+#'
+#' In production the project is read from the file named by
+#' GOOGLE_APPLICATION_CREDENTIALS -- an environment variable of exactly the same
+#' writability as SF_SECRET_BACKEND. An actor who can set one can set the other,
+#' point it at their own valid key, and get their own project back while
+#' SF_GSM_PROJECT stays correctly ignored.
+#'
+#' Nor is that actor meaningfully constrained: on the FlowForce host, whoever can
+#' set a job's environment can also edit its command, so they can already run
+#' arbitrary code as flow-force-user and print any resolved secret.
+#'
+#' So this is defence against MISCONFIGURATION -- a stray SF_GSM_PROJECT in a
+#' profile or an inherited environment -- not against a hostile job definition.
+#' Returning SECRETSR_DEFAULT_PROJECT unconditionally in production would close
+#' it, and is a behavioural no-op today because sa-flowforce lives in
+#' studyflix-secrets, so its key's project_id already IS the default. Deferred as
+#' cleanup rather than done as a fix, because the guard was never load-bearing.
+#'
+#' ONE REASSURANCE IN THE FIRST DRAFT OF THIS NOTE WAS WRONG. It said the
+#' residual failure is loud, because a wrong project produces a 403 naming it.
+#' That holds for the MISCONFIGURATION case -- a project this credential cannot
+#' read does 403. It does NOT hold adversarially: an actor supplying their own
+#' key picks a project they CAN read, and if it holds a same-named secret the
+#' call returns 200 and the caller silently consumes an attacker-supplied
+#' credential. The deferral rests on the argument above, not on this.
+#'
+#' Two smaller precisions, since this note is now the reference. The two
+#' variables are equally WRITABLE but not equally cheap to exploit: redirecting
+#' GOOGLE_APPLICATION_CREDENTIALS also requires placing a valid key the job's uid
+#' can read. And environment control is not always command control -- a write to
+#' ~flow-force-user/.Renviron reaches all 172 R jobs without touching any job
+#' definition. The conclusion survives both, because that same file can set
+#' GOOGLE_APPLICATION_CREDENTIALS.
 #'
 #' Sys.getenv()'s unset= only fires when the variable is genuinely absent, so a
 #' set-but-empty variable is handled explicitly.
