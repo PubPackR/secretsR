@@ -13,7 +13,10 @@ secret_get(name, version = "latest", file_key = NULL)
 for incident response - a disabled newest version makes "latest" fail
 rather than fall back (spec 5.13).}
 
-\item{file_key}{Only used by the "file" backend: the safer master password.}
+\item{file_key}{Removed with the file backend in 0.3.0. It stays in the
+signature for this release only, so that a caller still passing it stops
+with a message naming the removal rather than with "unused argument". Any
+value other than NULL is an error.}
 }
 \value{
 The secret value as a UTF-8 character scalar.

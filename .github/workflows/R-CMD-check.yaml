@@ -28,8 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          # ubuntu mirrors the server, windows mirrors the developer laptops -
-          # the file backend reads relative paths, which is where the two differ.
+          # ubuntu mirrors the server, windows mirrors the developer laptops.
           - {os: ubuntu-latest,  r: 'release'}
           - {os: windows-latest, r: 'release'}
 

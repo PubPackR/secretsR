@@ -1,7 +1,7 @@
 # secretsR
 
-Credential resolution for Studyflix R applications. One function, three
-interchangeable backends.
+Credential resolution for Studyflix R applications. One function, two
+backends.
 
 ```r
 secret_get("studyflix-billomat-api-key")
@@ -17,52 +17,35 @@ Chosen per process by `SF_SECRET_BACKEND`. **Never set it machine-wide.**
 
 | Value | Source | When |
 |---|---|---|
-| `gsm` | Google Secret Manager | Production. The destination. |
-| `file` | legacy `safer`-encrypted `keys/*` | Transition and rollback only. Deleted in Plan F. |
+| `gsm` | Google Secret Manager | Production, laptops, everything real. |
 | `env` | `SF_SECRET_<NAME>` | Unit tests and break-glass. **Not a deployment mechanism.** |
 
-Unset means `file`. There are no `.env` files anywhere in this design.
+Unset means `gsm`. There are no `.env` files anywhere in this design.
 
 ## Environment variables
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SF_SECRET_BACKEND` | `file` | Which backend to use |
+| `SF_SECRET_BACKEND` | `gsm` | Which backend to use |
 | `SF_GSM_PROJECT` | `studyflix-secrets` | Project holding the secrets |
-| `SF_SECRET_FILE_KEY` | — | `file` backend only: one `safer` password — see below |
 
-`secret_get()` also takes `file_key` directly, which is how
-`Billomatics::authentication_process(args)` threads the password through during
-the transition.
+## The file backend is gone (0.3.0)
 
-### There is no single master password
+0.3.0 removed the `file` backend, which read the legacy `safer`-encrypted
+`keys/*` files, together with its path map and `SF_SECRET_FILE_KEY` (Plan F).
+Every runtime resolves from Secret Manager: the FlowForce host, the job
+containers and the Shiny container set `SF_SECRET_BACKEND=gsm` explicitly, and
+the host's production marker refuses every other backend.
 
-Verified against the real `keys/` tree on the server, 2026-08-19: the legacy
-files are encrypted under **per-service passwords**, not one master password.
-`authentication_process()` hands each service its own, positionally:
+- `SF_SECRET_BACKEND=file` stops with a message naming the removal.
+- `secret_get()` keeps its `file_key` argument for this release only. Any value
+  other than `NULL` stops with the same kind of message, so a caller still
+  passing it, such as Billomatics' non-gsm branch, learns why instead of
+  hitting "unused argument". The argument goes in the next release.
 
-```r
-for (service in needed_services) {
-  pos <- match(service, needed_services)
-  keys[[service]] <- auth_functions[[service]](args[pos])   # args[pos], not args
-}
-```
-
-Measured: one password decrypted `keys/PostgreSQL_DB/*` and failed on all twelve
-`studyflix-*` files, which are structurally identical (single-line, base64).
-
-So `SF_SECRET_FILE_KEY` can only serve secrets that happen to share one password.
-A job needing several services must pass `file_key` **per call** — which is what
-Billomatics does. This is a legacy artefact and disappears with the `file`
-backend in Plan F; until then, do not treat the environment variable as
-sufficient for a multi-service job.
-
-## The default backend needs configuration
-
-A fresh install with no environment set resolves to the `file` backend, which
-**errors** unless `SF_SECRET_FILE_KEY` or a `file_key` argument is supplied.
-That is by design, not a fault: nothing should silently fall back to a source it
-was not told to use.
+A fresh install with no environment set resolves to `gsm`, which needs
+Application Default Credentials (below). Without them the first `secret_get()`
+stops and says how to get them.
 
 ## Authentication
 

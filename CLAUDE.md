@@ -1,8 +1,12 @@
 # secretsR — context for a new session
 
 Credential resolution for Studyflix R applications. One exported function,
-`secret_get()`, backed by three interchangeable sources. This is **Plan C1** of
-the Google Secret Manager migration.
+`secret_get()`, backed by Secret Manager (`gsm`) or, for tests and break-glass,
+environment variables (`env`). This is **Plan C1** of the Google Secret Manager
+migration. The `file` backend was removed in 0.3.0 (Plan F): `SF_SECRET_BACKEND`
+unset now means `gsm`, `file` stops with a message naming the removal, and
+`secret_get()`'s `file_key` argument stays one release only, refusing any value
+other than `NULL`.
 
 ## Read these first
 
@@ -33,7 +37,11 @@ $R = "$env:LOCALAPPDATA\Programs\R\R-4.6.1\bin\Rscript.exe"
 & $R -e "options(buildtools.check=function(a) TRUE); devtools::check(args='--no-manual', error_on='warning')"
 ```
 
-Baseline: **123 passing, 2 skipped, check 0/0/0** (v0.2.0, 2026-08-20).
+Baseline: **103 expectations passing in 61 tests, 2 skipped, check 0 errors /
+0 warnings** (v0.3.0, 2026-11-06). v0.2.0 measured 125 expectations in 79 tests
+the same day; the difference is the file backend's tests. The check's two notes
+on Windows are environmental and identical on both versions: CRAN incoming
+("New submission") and no pandoc for README.md.
 Integration tests run only with `SECRETSR_INTEGRATION=1` and need GCP access to
 `studyflix-secrets`; that run was 111 at v0.1 and has not been re-measured since.
 
@@ -95,33 +103,22 @@ Known-good mutations, with expected results:
   Keep the rule, drop the claim — see `R/backend_config.R` and
   `PubPackR/secretsR#2`.
 - **The cache key must contain everything that changes what a name resolves
-  to**: backend, project, name, version, a real hash of `file_key`, and — for
-  the `file` backend only — `getwd()`. Two defects lived here until 2026-08-20.
-  `digest_key()` was first-character-code plus length, so `"password-a"` and
-  `"password-b"` both produced `"112-10"` and shared a slot; on the Shiny path
-  `args` carries a *per-user* key, making that a cross-user credential leak.
-  And the legacy map holds **relative** paths, so without `getwd()` two app
-  roots in one process collapsed to one entry. Both are mutation-tested; each
-  component fails exactly one test when removed. `getwd()` is excluded for
-  `gsm`/`env` deliberately — there it would turn a directory change into an API
-  call, and a third test pins that.
+  to**: backend, project, name and version. Until 0.3.0 it also held a hash of
+  `file_key` and, for the `file` backend, `getwd()`; both went with that
+  backend. `getwd()` stays out deliberately — for `gsm`/`env` it would turn a
+  directory change into an API call, and a test pins that.
 - **`secret_get()` is the primary export.** Two others: `secret_cache_clear()`,
   so a long-running process can pick up a rotated secret, and `secret_backend()`
   (v0.2.0), so a consumer can branch on the backend without reaching into `:::`
   or re-implementing the resolution rules. `secret_backend()` is a *report*, not
   a permission — `secret_get()` still enforces the production guard, so knowing
   the backend cannot be used to bypass it. Keep the export list this short.
-- **The legacy map covers all 22 dispatched services.** `msgraph_sharepoint`
-  (Billomatics PR #32) and `gemini` were added in v0.2.0. Deliberate absences are
-  documented in `R/legacy_map.R`'s roxygen and each has a reason; a name missing
-  without one is a bug, because `authentication_process()` dispatches it and the
-  equivalence test in design §5.5 will fail on it.
 - **There are TWO legacy data keys**, `studyflix-legacy-data-key-billomat` and
-  `-asana`. Established 2026-08-20 by sweeping every
+  `-asana`, both Secret Manager secrets. Established 2026-08-20 by sweeping every
   `encrypt_object()`/`decrypt_object()` call site org-wide: ~49 pass
   `keys$billomat[1]`, 9 pass `keys$asana[1]`. Under design §3.3 those are
   different strings, so a single data key would leave `base-02`'s output
-  unreadable. Neither is in the map — each *is* a `file_key`, not a file.
+  unreadable.
 
 ## Outstanding — not yet done
 
@@ -140,7 +137,8 @@ Two independent reviews found more than has been fixed.
   throttle. It is captured from **stdout**: log4r's default console appender
   writes there. Without log4r installed, `secretsR_warn()` degrades to
   `warning()`, which goes to stderr — the two paths do not agree on a stream.
-- ~~`secret_get_file()`'s default `file_key` is never exercised.~~ Closed.
+- ~~`secret_get_file()`'s default `file_key` is never exercised.~~ Closed, and
+  moot since 0.3.0 removed the function.
 - **STILL OPEN** — three empty-string tests are **vacuous on Windows**:
   `withr::with_envvar(c(X = ""))` *unsets* the variable here, so they take the
   `is.na` path and never reach the `nzchar()` guard they were written for. The
@@ -153,10 +151,6 @@ Two independent reviews found more than has been fixed.
   indefinitely, and the failure then surfaces at the DB/API connect, far from the
   cause. `secret_cache_clear()` exists but nothing calls it and no Shiny recipe
   ships.
-- **The `file` backend's `../../keys/` path is working-directory dependent**, and
-  the cache hides it: one successful early call makes later calls succeed
-  regardless of `cwd`. Consider anchoring on `SF_KEYS_DIR` with the relative path
-  as fallback.
 - A plaintext value lives in the cache environment for the process lifetime, so
   `options(error = dump.frames)` in a FlowForce job would serialise it into
   `last.dump.rda`. Worth a README note.

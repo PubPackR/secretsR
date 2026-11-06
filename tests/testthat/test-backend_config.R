@@ -1,5 +1,10 @@
-test_that("backend defaults to file when unset", {
-  withr::with_envvar(c(SF_SECRET_BACKEND = NA), expect_equal(secretsR_backend(), "file"))
+test_that("backend defaults to gsm when unset", {
+  withr::with_envvar(c(SF_SECRET_BACKEND = NA), expect_equal(secretsR_backend(), "gsm"))
+})
+
+test_that("the removed file backend is refused with a message naming the removal", {
+  withr::with_envvar(c(SF_SECRET_BACKEND = "file"),
+                     expect_error(secretsR_backend(), "removed in secretsR 0.3.0"))
 })
 
 test_that("backend reads the environment variable", {
@@ -11,7 +16,7 @@ test_that("an unknown backend is rejected loudly", {
 })
 
 test_that("an empty backend variable falls back to the default", {
-  withr::with_envvar(c(SF_SECRET_BACKEND = ""), expect_equal(secretsR_backend(), "file"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = ""), expect_equal(secretsR_backend(), "gsm"))
 })
 
 test_that("project defaults, and honours an explicit value", {
@@ -24,17 +29,17 @@ test_that("an empty project variable falls back to the default", {
 })
 
 test_that("secret_backend() reports the resolved backend", {
-  withr::with_envvar(c(SF_SECRET_BACKEND = "file"), expect_identical(secret_backend(), "file"))
   withr::with_envvar(c(SF_SECRET_BACKEND = "env"), expect_identical(secret_backend(), "env"))
   withr::with_envvar(c(SF_SECRET_BACKEND = "gsm"), expect_identical(secret_backend(), "gsm"))
 })
 
-test_that("secret_backend() defaults to file and rejects an unknown value", {
+test_that("secret_backend() defaults to gsm and rejects an unknown value", {
   # It is the same resolution secret_get() uses, deliberately: a consumer that
   # branches on the backend must not be able to disagree with the dispatcher
   # about what the backend is.
-  withr::with_envvar(c(SF_SECRET_BACKEND = NA), expect_identical(secret_backend(), "file"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = NA), expect_identical(secret_backend(), "gsm"))
   withr::with_envvar(c(SF_SECRET_BACKEND = "s3"), expect_error(secret_backend(), "SF_SECRET_BACKEND"))
+  withr::with_envvar(c(SF_SECRET_BACKEND = "file"), expect_error(secret_backend(), "removed"))
 })
 
 test_that("secret_backend() is exported", {
