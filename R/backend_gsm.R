@@ -206,17 +206,10 @@ secretsR_http_status <- function(e) {
 #'   rather than fall back, so pin an explicit version for incident response
 #'   (spec 5.13).
 #' @return Secret value as a character scalar. UTF-8 validation and labelling
-#'   happen centrally in secret_get(), so all three backends share one rule.
+#'   happen centrally in secret_get(), so both backends share one rule.
 #' @noRd
 secret_get_gsm <- function(name, version = "latest") {
   # ---- start ---- #
-  # A "file:" name is the other backend's namespace, not a typo. URLencode()
-  # would turn it into %3A and produce a 404 that reads as "the secret is
-  # missing" during a rollback, when the truth is that it never existed here.
-  if (grepl("^file:", name)) {
-    stop(sprintf("GSM: '%s' is a file-backend-internal name and does not exist in Secret Manager (spec 5.8)",
-                 name), call. = FALSE)
-  }
   project <- secretsR_project()
   url <- sprintf(
     "https://secretmanager.googleapis.com/v1/projects/%s/secrets/%s/versions/%s:access",

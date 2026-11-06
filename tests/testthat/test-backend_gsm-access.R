@@ -157,9 +157,3 @@ test_that("the specific handlers still win over the terminal one", {
   expect_match(msg, "secretAccessor")
   expect_false(grepl("failed after retries", msg, fixed = TRUE))
 })
-
-test_that("a file-backend-internal name is refused before any request", {
-  local_mocked_bindings(secretsR_token = fake_token,
-                        gsm_perform = function(req, ...) stop("the network must not be reached"))
-  expect_error(secret_get_gsm("file:postgresql-credentials"), "file-backend-internal")
-})

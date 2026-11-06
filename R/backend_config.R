@@ -4,17 +4,17 @@
 #' reaching into `:::` or re-implementing the resolution rules - the two ways a
 #' consumer's idea of the backend drifts out of sync with the dispatcher's.
 #'
-#' `Billomatics` needs it for two decisions. Under `gsm` there is no password to
-#' prompt for interactively, and no per-service `file_key` to thread through;
-#' under `file` there is. And the four service-account JSON services have no
-#' `file` path at all (design 5.7), so they must branch rather than fail.
+#' `Billomatics` branches on it: under `gsm` it resolves every credential from
+#' Secret Manager. Its other branch belonged to the file backend, which 0.3.0
+#' removed; until Billomatics drops that branch it is reached only under `env`,
+#' where `secret_get()` refuses the `file_key` it passes.
 #'
 #' This is a *report*, not a permission: `secret_get()` still enforces the
 #' production guard, so a caller learning the backend here cannot use that
 #' knowledge to bypass it.
 #'
-#' @return One of "gsm", "file" or "env", as a character scalar. Errors if
-#'   SF_SECRET_BACKEND holds an unrecognised value.
+#' @return "gsm" or "env", as a character scalar. Errors if SF_SECRET_BACKEND
+#'   holds an unrecognised value.
 #' @export
 #' @examples
 #' secret_backend()
@@ -28,13 +28,23 @@ secret_backend <- function() {
 #' Reads SF_SECRET_BACKEND. Per-process by design (spec 5.2) - never set this
 #' machine-wide.
 #'
-#' @return One of "gsm", "file", "env".
+#' Unset or empty means gsm since 0.3.0; before, it meant the file backend.
+#' Every production runtime sets gsm explicitly, and production refuses any
+#' other backend anyway, so the default matters only on a laptop or in CI.
+#' "file" gets its own message, so that a profile still naming it says what
+#' happened instead of listing the valid values.
+#'
+#' @return "gsm" or "env".
 #' @noRd
 secretsR_backend <- function() {
   # ---- start ---- #
   backend <- Sys.getenv("SF_SECRET_BACKEND", unset = "")
-  if (!nzchar(backend)) backend <- "file"
-  valid <- c("gsm", "file", "env")
+  if (!nzchar(backend)) backend <- "gsm"
+  if (identical(backend, "file")) {
+    stop("SF_SECRET_BACKEND=file: the file backend was removed in secretsR 0.3.0. Set SF_SECRET_BACKEND=gsm, or unset it.",
+         call. = FALSE)
+  }
+  valid <- c("gsm", "env")
   if (!backend %in% valid) {
     stop(sprintf("SF_SECRET_BACKEND must be one of %s, got '%s'",
                  paste(valid, collapse = "/"), backend), call. = FALSE)

@@ -7,8 +7,8 @@
 secret_backend()
 }
 \value{
-One of "gsm", "file" or "env", as a character scalar. Errors if
-SF_SECRET_BACKEND holds an unrecognised value.
+"gsm" or "env", as a character scalar. Errors if SF_SECRET_BACKEND
+holds an unrecognised value.
 }
 \description{
 Exported so a consuming package can branch on the backend without either
@@ -16,10 +16,10 @@ reaching into \code{:::} or re-implementing the resolution rules - the two ways 
 consumer's idea of the backend drifts out of sync with the dispatcher's.
 }
 \details{
-\code{Billomatics} needs it for two decisions. Under \code{gsm} there is no password to
-prompt for interactively, and no per-service \code{file_key} to thread through;
-under \code{file} there is. And the four service-account JSON services have no
-\code{file} path at all (design 5.7), so they must branch rather than fail.
+\code{Billomatics} branches on it: under \code{gsm} it resolves every credential from
+Secret Manager. Its other branch belonged to the file backend, which 0.3.0
+removed; until Billomatics drops that branch it is reached only under \code{env},
+where \code{secret_get()} refuses the \code{file_key} it passes.
 
 This is a \emph{report}, not a permission: \code{secret_get()} still enforces the
 production guard, so a caller learning the backend here cannot use that
